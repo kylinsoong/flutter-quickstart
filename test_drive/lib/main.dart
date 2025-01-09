@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'dart:io';
+//import 'dart:io';
 import 'package:http/http.dart' as http;
 
 void main() => runApp(const SignUpApp());
@@ -55,8 +55,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<Map<String, dynamic>>> fetchVideos() async {
-    final String apiUrl = Platform.environment['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
-    final response = await http.get(Uri.parse('$apiUrl/api/videos'));
+    //final String apiUrl = Platform.environment['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
+    //final response = await http.get(Uri.parse('$apiUrl/api/videos'));
+    final response = await http.get(Uri.parse('http://127.0.0.1:3000/api/videos'));
 
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -221,10 +222,6 @@ class _AnimatedProgressIndicatorState extends State<AnimatedProgressIndicator>
     final colorTween = TweenSequence([
       TweenSequenceItem(
         tween: ColorTween(begin: Colors.red, end: Colors.orange),
-        weight: 1,
-      ),
-      TweenSequenceItem(
-        tween: ColorTween(begin: Colors.orange, end: Colors.yellow),
         weight: 1,
       ),
       TweenSequenceItem(
