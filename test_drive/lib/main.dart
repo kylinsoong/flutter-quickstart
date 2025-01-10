@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 //import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const SignUpApp());
 
@@ -48,6 +49,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Future<List<Map<String, dynamic>>> _videos;
 
+  int? _sortColumnIndex;
+  bool _sortAscending = true;
+
   @override
   void initState() {
     super.initState();
@@ -56,8 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<List<Map<String, dynamic>>> fetchVideos() async {
     //final String apiUrl = Platform.environment['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
-    //final response = await http.get(Uri.parse('$apiUrl/api/videos'));
-    final response = await http.get(Uri.parse('http://127.0.0.1:3000/api/videos'));
+    const String apiUrl = 'http://127.0.0.1:3000/api/videos';
+    final response = await http.get(Uri.parse(apiUrl));
 
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
@@ -67,11 +71,44 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _retryFetchVideos() async {
+    setState(() {
+      _videos = fetchVideos();
+    });
+  }
+
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      throw 'Could not launch $url';
+    }
+  }
+
+  void _sortTable(int columnIndex, bool ascending) {
+  setState(() {
+    _sortColumnIndex = columnIndex;
+    _sortAscending = ascending;
+    _videos = _videos.then((videos) {
+      videos.sort((a, b) {
+        final nameA = Uri.parse(a['url'] ?? '').pathSegments.last;
+        final nameB = Uri.parse(b['url'] ?? '').pathSegments.last;
+        return ascending
+            ? nameA.compareTo(nameB)
+            : nameB.compareTo(nameA);
+      });
+      return videos;
+    });
+  });
+}
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Video List'),
+        title: const Text('视频列表'),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _videos,
@@ -79,29 +116,100 @@ class _HomeScreenState extends State<HomeScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '加载失败: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _retryFetchVideos,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No videos found'));
+            return const Center(child: Text('未找到视频数据'));
           } else {
             final videos = snapshot.data!;
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('UID')),
-                  DataColumn(label: Text('URL')),
-                  DataColumn(label: Text('Audio')),
-                  DataColumn(label: Text('Video')),
-                ],
-                rows: videos.map((video) {
-                  return DataRow(cells: [
-                    DataCell(Text(video['uid'] ?? '')),
-                    DataCell(Text(video['url'] ?? '')),
-                    DataCell(Text(video['audio']?.trim() ?? '')),
-                    DataCell(Text(video['video']?.trim() ?? '')),
-                  ]);
-                }).toList(),
-              ),
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  scrollDirection: Axis.vertical,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: DataTable(
+                      sortColumnIndex: _sortColumnIndex,
+                      sortAscending: _sortAscending,
+                      columnSpacing: 16.0,
+                      dataRowMinHeight: 48.0, // Set the minimum height for rows
+                      dataRowMaxHeight: 60.0,
+                      headingRowColor: WidgetStateColor.resolveWith((states) => Colors.grey[200]!, ),
+                      columns:  [
+                        DataColumn(
+                          label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        DataColumn(
+                          label: Text('链接', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
+                        ),
+                        DataColumn(
+                          label: Text('语音分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
+                        ),
+                        DataColumn(
+                          label: Text('视频分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
+                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
+                        ),
+                      ],
+                      rows: videos.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final video = entry.value;
+                        return DataRow(
+                          color: WidgetStateProperty.resolveWith((states) => index.isEven ? Colors.white : Colors.grey[100]),
+                          cells: [
+                            DataCell(Text(video['uid'] ?? '')),
+                            DataCell(
+                              GestureDetector(
+                                onTap: () => _launchURL(video['url'] ?? ''),
+                                child: Text(
+                                  Uri.parse(video['url'] ?? '').pathSegments.last,
+                                  style: const TextStyle(
+                                    color: Colors.blue,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(
+                                  video['audio']?.trim() ?? '',
+                                  style: const TextStyle(overflow: TextOverflow.visible),
+                                ),
+                              ),
+                            ),
+                            DataCell(
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Text(
+                                  video['video']?.trim() ?? '',
+                                  style: const TextStyle(overflow: TextOverflow.visible),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                );
+              },
             );
           }
         },
@@ -109,6 +217,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
+
 
 class SignUpForm extends StatefulWidget {
   const SignUpForm({super.key});
