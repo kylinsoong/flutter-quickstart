@@ -51,6 +51,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int? _sortColumnIndex;
   bool _sortAscending = true;
+  int _rowsPerPage = 10;
+  late VideoDataTableSource _videoDataSource;
 
   @override
   void initState() {
@@ -59,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<Map<String, dynamic>>> fetchVideos() async {
-    //final String apiUrl = Platform.environment['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
+    //final String apiUrl = Platform.environment['API_BASE_URL']?? 'http://127.0.0.1:3000';
     const String apiUrl = 'http://127.0.0.1:3000/api/videos';
     final response = await http.get(Uri.parse(apiUrl));
 
@@ -87,138 +89,154 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _sortTable(int columnIndex, bool ascending) {
-  setState(() {
-    _sortColumnIndex = columnIndex;
-    _sortAscending = ascending;
-    _videos = _videos.then((videos) {
-      videos.sort((a, b) {
-        final nameA = Uri.parse(a['url'] ?? '').pathSegments.last;
-        final nameB = Uri.parse(b['url'] ?? '').pathSegments.last;
-        return ascending
-            ? nameA.compareTo(nameB)
-            : nameB.compareTo(nameA);
-      });
-      return videos;
+    setState(() {
+      _sortColumnIndex = columnIndex;
+      _sortAscending = ascending;
+      _videoDataSource.sort(columnIndex, ascending);
     });
-  });
-}
-
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('视频列表'),
+        title: const Text('豆包大模型视频质检'),
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _videos,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '加载失败: ${snapshot.error}',
-                    style: const TextStyle(color: Colors.red),
+      body: SingleChildScrollView( // 新增这一行，使用SingleChildScrollView包裹，使其可滚动
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _videos,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '加载失败: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _retryFetchVideos,
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
+              );
+            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Text('未找到视频数据'));
+            } else {
+              final videos = snapshot.data!;
+              _videoDataSource = VideoDataTableSource(videos, _launchURL);
+
+              return PaginatedDataTable(
+                header: const Text('视频列表'),
+                rowsPerPage: _rowsPerPage,
+                availableRowsPerPage: const [5, 10, 20, 50, 100],
+                onRowsPerPageChanged: (value) {
+                  setState(() {
+                    _rowsPerPage = value!;
+                  });
+                },
+                sortColumnIndex: _sortColumnIndex,
+                sortAscending: _sortAscending,
+                columns: [
+                  DataColumn(
+                    label: const Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _retryFetchVideos,
-                    child: const Text('重试'),
+                  DataColumn(
+                    label: const Text('视频', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
+                  ),
+                  DataColumn(
+                    label: const Text('语音分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
+                  ),
+                  DataColumn(
+                    label: const Text('视频分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
+                    onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
                   ),
                 ],
-              ),
-            );
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('未找到视频数据'));
-          } else {
-            final videos = snapshot.data!;
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  scrollDirection: Axis.vertical,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    child: DataTable(
-                      sortColumnIndex: _sortColumnIndex,
-                      sortAscending: _sortAscending,
-                      columnSpacing: 16.0,
-                      dataRowMinHeight: 48.0, // Set the minimum height for rows
-                      dataRowMaxHeight: 60.0,
-                      headingRowColor: WidgetStateColor.resolveWith((states) => Colors.grey[200]!, ),
-                      columns:  [
-                        DataColumn(
-                          label: Text('ID', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                        DataColumn(
-                          label: Text('链接', style: TextStyle(fontWeight: FontWeight.bold)),
-                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
-                        ),
-                        DataColumn(
-                          label: Text('语音分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
-                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
-                        ),
-                        DataColumn(
-                          label: Text('视频分析结果', style: TextStyle(fontWeight: FontWeight.bold)),
-                          onSort: (columnIndex, ascending) => _sortTable(columnIndex, ascending),
-                        ),
-                      ],
-                      rows: videos.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final video = entry.value;
-                        return DataRow(
-                          color: WidgetStateProperty.resolveWith((states) => index.isEven ? Colors.white : Colors.grey[100]),
-                          cells: [
-                            DataCell(Text(video['uid'] ?? '')),
-                            DataCell(
-                              GestureDetector(
-                                onTap: () => _launchURL(video['url'] ?? ''),
-                                child: Text(
-                                  Uri.parse(video['url'] ?? '').pathSegments.last,
-                                  style: const TextStyle(
-                                    color: Colors.blue,
-                                    decoration: TextDecoration.underline,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(
-                                  video['audio']?.trim() ?? '',
-                                  style: const TextStyle(overflow: TextOverflow.visible),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(
-                                  video['video']?.trim() ?? '',
-                                  style: const TextStyle(overflow: TextOverflow.visible),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                );
-              },
-            );
-          }
-        },
+                source: _videoDataSource,
+              );
+            }
+          },
+        ),
       ),
     );
   }
 }
 
+class VideoDataTableSource extends DataTableSource {
+  final List<Map<String, dynamic>> _videos;
+  final Future<void> Function(String url) _launchURL;
 
+  VideoDataTableSource(this._videos, this._launchURL);
+
+  @override
+  DataRow getRow(int index) {
+    assert(index >= 0);
+    if (index >= _videos.length) return const DataRow(cells: []);
+    final video = _videos[index];
+    return DataRow(
+      cells: [
+        DataCell(Text(video['uid']?? '')),
+        DataCell(
+          GestureDetector(
+            onTap: () => _launchURL(video['url']?? ''),
+            child: Text(
+              Uri.parse(video['url']?? '').pathSegments.last,
+              style: const TextStyle(
+                color: Colors.blue,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ),
+        DataCell(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              video['audio']?.trim()?? '',
+              style: const TextStyle(overflow: TextOverflow.visible),
+            ),
+          ),
+        ),
+        DataCell(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Text(
+              video['audio']?.trim()?? '',
+              style: const TextStyle(overflow: TextOverflow.visible),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  bool get isRowCountApproximate => false;
+
+  @override
+  int get rowCount => _videos.length;
+
+  @override
+  int get selectedRowCount => 0;
+
+  void sort(int columnIndex, bool ascending) {
+    if (columnIndex == 1) {
+      _videos.sort((a, b) {
+        final nameA = Uri.parse(a['url']?? '').pathSegments.last;
+        final nameB = Uri.parse(b['url']?? '').pathSegments.last;
+        return ascending? nameA.compareTo(nameB) : nameB.compareTo(nameA);
+      });
+    }
+    notifyListeners();
+  }
+}
 
 class SignUpForm extends StatefulWidget {
   const SignUpForm({super.key});
@@ -292,7 +310,7 @@ class _SignUpFormState extends State<SignUpForm> {
                     : Colors.blue;
               }),
             ),
-            onPressed: _formProgress == 1 ? _showWelcomeScreen : null,
+            onPressed: _formProgress == 1? _showWelcomeScreen : null,
             child: const Text('Sign up'),
           ),
         ],
