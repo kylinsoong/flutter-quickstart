@@ -102,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('豆包大模型视频质检'),
       ),
-      body: SingleChildScrollView( // 新增这一行，使用SingleChildScrollView包裹，使其可滚动
+      body: SingleChildScrollView( 
         child: FutureBuilder<List<Map<String, dynamic>>>(
           future: _videos,
           builder: (context, snapshot) {
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _videoDataSource = VideoDataTableSource(videos, _launchURL);
 
               return PaginatedDataTable(
-                header: const Text('视频列表'),
+                header: const Text('质检结果'),
                 rowsPerPage: _rowsPerPage,
                 availableRowsPerPage: const [5, 10, 20, 50, 100],
                 onRowsPerPageChanged: (value) {
@@ -182,15 +182,21 @@ class VideoDataTableSource extends DataTableSource {
     final video = _videos[index];
     return DataRow(
       cells: [
-        DataCell(Text(video['uid']?? '')),
+        DataCell(
+          Center( // 对每个DataCell中的内容添加Center组件包裹，使其内容居中显示
+            child: Text(video['uid']?? ''),
+          ),
+        ),
         DataCell(
           GestureDetector(
             onTap: () => _launchURL(video['url']?? ''),
-            child: Text(
-              Uri.parse(video['url']?? '').pathSegments.last,
-              style: const TextStyle(
-                color: Colors.blue,
-                decoration: TextDecoration.underline,
+            child: Center( // 对每个DataCell中的内容添加Center组件包裹，使其内容居中显示
+              child: Text(
+                Uri.parse(video['url']?? '').pathSegments.last,
+                style: const TextStyle(
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                ),
               ),
             ),
           ),
@@ -198,18 +204,25 @@ class VideoDataTableSource extends DataTableSource {
         DataCell(
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Text(
-              video['audio']?.trim()?? '',
-              style: const TextStyle(overflow: TextOverflow.visible),
+            child: Center( // 对每个DataCell中的内容添加Center组件包裹，使其内容居中显示
+              child: Text(
+                (video['audio']?.trim()?? '').replaceAll(' ', ''),
+                style: const TextStyle(),
+                overflow: TextOverflow.visible,
+                maxLines: null,
+                softWrap: true,
+              ),
             ),
           ),
         ),
         DataCell(
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Text(
-              video['audio']?.trim()?? '',
-              style: const TextStyle(overflow: TextOverflow.visible),
+            child: Center( // 对每个DataCell中的内容添加Center组件包裹，使其内容居中显示
+              child: Text(
+                (video['video']?.trim()?? '').replaceAll(' ', ''),
+                style: const TextStyle(overflow: TextOverflow.visible),
+              ),
             ),
           ),
         ),
